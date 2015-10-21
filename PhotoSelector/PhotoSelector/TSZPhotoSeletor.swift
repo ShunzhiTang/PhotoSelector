@@ -1,18 +1,20 @@
-//
 //  TSZPhotoSeletor.swift
 //  PhotoSelector
-//
 //  Created by Tsz on 15/10/20.
 //  Copyright © 2015年 Tsz. All rights reserved.
-//
 
 import UIKit
 
 private let TSZPhotoSelectorIdentify = "TSZPhotoSelectorIdentify"
 private let MaxNumberPriture = 9
 
-class TSZPhotoSeletor: UICollectionViewController {
+class TSZPhotoSeletor: UICollectionViewController ,PhotoSelectorViewDelegate{
 
+    //照片的数组
+    lazy var photos: [UIImage] = [UIImage]()
+    // 当前用户选择照片的索引
+    private var currentIndex = 0
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         
@@ -37,15 +39,66 @@ class TSZPhotoSeletor: UICollectionViewController {
     
     //MARK: 实现UICollectionViewController 的数据源方法
     override func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        return MaxNumberPriture
+        
+        return  (photos.count == MaxNumberPriture) ? photos.count : photos.count + 1
     }
     
    override func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCellWithReuseIdentifier(TSZPhotoSelectorIdentify, forIndexPath: indexPath) as! TSZPhotoSelectorCell
         cell.backgroundColor = UIColor.blueColor()
+    
+    cell.image = (indexPath.item < photos.count) ? photos[indexPath.item] : nil
+    
+        cell.photoDelegate = self
         return cell
     }
     
+    
+    //MARK: 照片选择的 协议实现
+    private func photoSelectorViewCellSelectorPhoto(cell: TSZPhotoSelectorCell) {
+         print(__FUNCTION__)
+        //一个参数默认就会删除参数名
+        if  !UIImagePickerController.isSourceTypeAvailable(UIImagePickerControllerSourceType.PhotoLibrary){
+            print("无法访问图片库")
+            return
+        }
+        
+        //记录当前用户选中的索引
+        let indexPath = collectionView?.indexPathForCell(cell)
+        
+        print(indexPath)
+        
+        currentIndex = indexPath!.item
+        
+        //实例化图片选择器
+        let picker = UIImagePickerController()
+        
+        //自己实现自己的方法
+        
+        picker.delegate = self
+        
+        //设置允许编辑
+        // 设置允许编辑 － 会多一个窗口，让用户缩放照片
+        // 在实际开发中，如果让用户从照片库选择头像，非常重要！
+        // 好处：1. 正方形，2. 图像会小
+        
+        picker.allowsEditing = true
+        
+        //跳转页面
+        presentViewController(picker, animated: true, completion: nil)
+        
+    }
+    
+      //MARK: 照片删除的 协议实现
+    private func photoSelectorViewCellRemovePhoto(cell: TSZPhotoSelectorCell) {
+        
+        //找到对应的cell
+        let indexPath = collectionView?.indexPathForCell(cell)
+        photos.removeAtIndex(indexPath!.item)
+        //刷新数据
+        collectionView?.reloadData()
+        
+    }
 }
 
 //MARK: - 实现从本机获取图片需要实现
@@ -55,11 +108,34 @@ extension TSZPhotoSeletor:UIImagePickerControllerDelegate , UINavigationControll
         
         //图像统一缩放到300宽 , 为了考虑到内存的问题
         
+        let  imgScale = image.scaleImage(300)
         
-//        let  imgScale = image.scaleIm
+        //当前的索引何照片的总数相等
+        if currentIndex == photos.count{
+            photos.append(imgScale)
+        }else {
+            //如果小于说明是数组中的某一项，
+            photos[currentIndex] = imgScale
+        }
+        
+        //更新collectionView
+        collectionView?.reloadData()
+        
+        //记得一定要关闭
+        dismissViewControllerAnimated(true, completion: nil)
+        
     }
     
     
+}
+
+//MARK:  点击我们的cell ，需要控制器去实现图片选择器
+private protocol PhotoSelectorViewDelegate: NSObjectProtocol{
+    /// MARK: 选择图片
+    func photoSelectorViewCellSelectorPhoto(cell: TSZPhotoSelectorCell)
+    
+    //删除图片
+    func photoSelectorViewCellRemovePhoto(cell: TSZPhotoSelectorCell)
 }
 
 
@@ -68,15 +144,18 @@ private class TSZPhotoSelectorCell: UICollectionViewCell {
     /**
     * cell的图像
     */
-    
     var image: UIImage? {
         didSet{
             //判断图片是否为空
             if  image == nil {
+               
                 addPhotoButton.setImage("compose_pic_add")
             }else{
                 addPhotoButton.setImage(image, forState: UIControlState.Normal)
             }
+            
+            //MARK - 这一句隐藏删除按钮
+             removePhotoButton.hidden  = (image == nil)
         }
     }
     
@@ -91,14 +170,16 @@ private class TSZPhotoSelectorCell: UICollectionViewCell {
         fatalError("init(coder:) has not been implemented")
     }
     
-    //MARK: - 实现点击方法
+    // MARK: --- 给出一个接口去实现cell的 协议
+    weak var photoDelegate: PhotoSelectorViewDelegate?
+    
+    // MARK: - 实现点击方法
     @objc func clickPhoto(){
-        print("需要添加图片")
+        photoDelegate?.photoSelectorViewCellSelectorPhoto(self)
     }
     @objc func clickRemove(){
-        print("删除")
+        photoDelegate?.photoSelectorViewCellRemovePhoto(self)
     }
-    
     
     private func setupUI(){
         addSubview(addPhotoButton)
@@ -122,7 +203,6 @@ private class TSZPhotoSelectorCell: UICollectionViewCell {
         //MARK: - 图片显示的不全，需要修改填充模式
         addPhotoButton.imageView?.contentMode = UIViewContentMode.ScaleAspectFill
     }
-    
     
     //MARK: 懒加载两个button
     private lazy var addPhotoButton:UIButton = UIButton(imageName: "compose_pic_add")
